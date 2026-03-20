@@ -237,6 +237,15 @@ input:focus { border-color: var(--accent); }
   display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 16px; margin-bottom: 28px;
 }
+.insights-row {
+  display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 24px;
+}
+.insight-pill {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 8px 14px;
+  font-size: 13px; color: var(--text-secondary);
+}
 .kpi-card {
   background: var(--card); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 22px 24px;
@@ -433,13 +442,24 @@ input:focus { border-color: var(--accent); }
     <div class="field-group">
       <label>Accent Color</label>
       <div class="color-swatches">
-        <div class="swatch active" style="background:#3B82F6" data-color="#3B82F6" onclick="pickColor(this)"></div>
-        <div class="swatch" style="background:#34D399" data-color="#34D399" onclick="pickColor(this)"></div>
-        <div class="swatch" style="background:#A78BFA" data-color="#A78BFA" onclick="pickColor(this)"></div>
-        <div class="swatch" style="background:#F97316" data-color="#F97316" onclick="pickColor(this)"></div>
-        <div class="swatch" style="background:#EF4444" data-color="#EF4444" onclick="pickColor(this)"></div>
-        <div class="swatch" style="background:#14B8A6" data-color="#14B8A6" onclick="pickColor(this)"></div>
+        <div class="swatch active" style="background:#3B82F6" data-color="#3B82F6" onclick="pickColor(this)" title="Blue"></div>
+        <div class="swatch" style="background:#34D399" data-color="#34D399" onclick="pickColor(this)" title="Green"></div>
+        <div class="swatch" style="background:#A78BFA" data-color="#A78BFA" onclick="pickColor(this)" title="Purple"></div>
+        <div class="swatch" style="background:#F97316" data-color="#F97316" onclick="pickColor(this)" title="Orange"></div>
+        <div class="swatch" style="background:#EF4444" data-color="#EF4444" onclick="pickColor(this)" title="Red"></div>
+        <div class="swatch" style="background:#14B8A6" data-color="#14B8A6" onclick="pickColor(this)" title="Teal"></div>
         <input type="text" class="hex-input" id="hexInput" value="#3B82F6" maxlength="7" oninput="customColor(this)">
+      </div>
+      <label style="margin-top:12px;display:block">Company Themes</label>
+      <div class="color-swatches" style="margin-top:6px">
+        <div class="swatch" style="background:#003DA5" data-color="#003DA5" onclick="pickColor(this)" title="Webcor"></div>
+        <div class="swatch" style="background:#C8102E" data-color="#C8102E" onclick="pickColor(this)" title="Swinerton"></div>
+        <div class="swatch" style="background:#1B365D" data-color="#1B365D" onclick="pickColor(this)" title="Clune"></div>
+      </div>
+      <div style="display:flex;gap:24px;margin-top:4px;font-size:11px;color:var(--text-dim)">
+        <span>Webcor</span>
+        <span>Swinerton</span>
+        <span>Clune</span>
       </div>
     </div>
 
@@ -892,10 +912,39 @@ async function renderDashboardMode(b64Config) {
     return;
   }
 
-  buildDashboard(container, config, allTabs, tabNames);
+  // Try AI layout analysis (falls back to auto-detect if unavailable)
+  let aiLayout = null;
+  try {
+    const firstData = allTabs[tabNames[0]];
+    const headers = firstData.length > 0 ? Object.keys(firstData[0]) : [];
+    const colTypes = {};
+    const types = detectColumnTypes(firstData, headers);
+    headers.forEach((h, i) => colTypes[h] = types[i]);
+
+    const aiResp = await Promise.race([
+      fetch((location.protocol === 'http:' ? 'http://100.116.75.57:8490' : 'https://100.116.75.57:8490') + '/analyze', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          title: config.title || 'Dashboard',
+          columns: headers,
+          sample_rows: firstData.slice(0, 20).map(r => headers.map(h => r[h] || '')),
+          row_count: firstData.length,
+          column_types: colTypes,
+        }),
+      }).then(r => r.ok ? r.json() : null).catch(() => null),
+      new Promise(resolve => setTimeout(() => resolve(null), 5000))  // 5s timeout
+    ]);
+    if (aiResp && aiResp.layout) {
+      aiLayout = aiResp.layout;
+      console.log('AI layout loaded:', aiLayout);
+    }
+  } catch(e) { console.log('AI layout unavailable, using auto-detect'); }
+
+  buildDashboard(container, config, allTabs, tabNames, aiLayout);
 }
 
-function buildDashboard(container, config, allTabs, tabNames) {
+function buildDashboard(container, config, allTabs, tabNames, aiLayout) {
   let html = '';
 
   // Header
@@ -909,7 +958,16 @@ function buildDashboard(container, config, allTabs, tabNames) {
   const firstData = allTabs[firstTab];
 
   // KPIs from first tab
-  html += '<div class="kpi-row" id="kpiRow">' + buildKPIs(firstData) + '</div>';
+  html += '<div class="kpi-row" id="kpiRow">' + buildKPIs(firstData, aiLayout) + '</div>';
+
+  // AI Insights (if available)
+  if (aiLayout && aiLayout.insights && aiLayout.insights.length > 0) {
+    html += '<div class="insights-row">';
+    aiLayout.insights.forEach(function(insight) {
+      html += '<div class="insight-pill"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>' + esc(insight) + '</div>';
+    });
+    html += '</div>';
+  }
 
   // Tab bar
   if (tabNames.length > 1) {
@@ -967,9 +1025,33 @@ function switchTab(el) {
 // =============================================
 // KPI DETECTION & RENDERING
 // =============================================
-function buildKPIs(data) {
+function buildKPIs(data, aiLayout) {
   if (!data || data.length === 0) return '';
   const headers = Object.keys(data[0]);
+
+  // If AI layout provided KPIs, use those
+  if (aiLayout && aiLayout.kpis && aiLayout.kpis.length > 0) {
+    const aiKpis = aiLayout.kpis.map(function(k) {
+      const vals = data.map(r => r[k.column]).filter(v => v != null && v !== '');
+      const nums = vals.map(v => parseFloat(String(v).replace(/[$,%]/g, ''))).filter(n => !isNaN(n));
+      let value = '—';
+      if (k.type === 'sum' && nums.length) value = formatNum(nums.reduce((a,b) => a+b, 0));
+      else if (k.type === 'average' && nums.length) value = formatNum(nums.reduce((a,b) => a+b, 0) / nums.length);
+      else if (k.type === 'count') value = formatNum(vals.length);
+      else if (k.type === 'max' && nums.length) value = formatNum(Math.max(...nums));
+      else if (k.type === 'min' && nums.length) value = formatNum(Math.min(...nums));
+      else if (k.type === 'latest' && vals.length) value = String(vals[vals.length - 1]);
+      // Check for dollar prefix
+      if (nums.length && data.some(r => String(r[k.column] || '').includes('$'))) value = '$' + value;
+      return { label: k.label || k.column, value: value };
+    });
+    aiKpis.unshift({ label: 'Total Rows', value: formatNum(data.length) });
+    return aiKpis.slice(0, 5).map(k =>
+      '<div class="kpi-card"><div class="kpi-value">' + esc(String(k.value)) + '</div><div class="kpi-label">' + esc(k.label) + '</div></div>'
+    ).join('');
+  }
+
+  // Fallback: auto-detect
   const kpis = [];
 
   headers.forEach(h => {
