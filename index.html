@@ -1444,41 +1444,71 @@ async function fetchGvizData(sheetId, tabName) {
 }
 
 async function fetchAllSheetTabs(sheetId) {
-  // gviz doesn't expose a tab-list API, and fetching /edit is blocked by CORS.
-  // Strategy: fetch the default sheet first, then probe for additional sheets
-  // by trying gid-based URLs (gid=0 is first sheet, we try a few more).
+  // Strategy:
+  // 1. Fetch the published HTML page to discover all tab names
+  // 2. Fetch each tab's data via gviz
   const tabs = {};
 
-  // 1. Fetch default tab
-  const defaultData = await fetchGvizData(sheetId);
-  const defaultName = 'Sheet1';
-  if (defaultData && defaultData.length > 0) {
-    tabs[defaultName] = defaultData;
+  // 1. Try to discover tab names from the published HTML
+  let tabNames = [];
+  try {
+    const htmlUrl = 'https://docs.google.com/spreadsheets/d/' + sheetId + '/pubhtml';
+    const resp = await fetch(htmlUrl);
+    if (resp.ok) {
+      const html = await resp.text();
+      // Tab names appear in the HTML as: <li id="sheet-button-XXXXX"><a ...>TabName</a></li>
+      const tabRegex = /<li[^>]*id="sheet-button-[^"]*"[^>]*>.*?<a[^>]*>([^<]+)<\/a>/gi;
+      let match;
+      while ((match = tabRegex.exec(html)) !== null) {
+        const name = match[1].trim();
+        if (name && !tabNames.includes(name)) tabNames.push(name);
+      }
+      // Fallback: try another pattern used in some published sheets
+      if (tabNames.length === 0) {
+        const altRegex = /data-name="([^"]+)"/gi;
+        while ((match = altRegex.exec(html)) !== null) {
+          const name = match[1].trim();
+          if (name && !tabNames.includes(name)) tabNames.push(name);
+        }
+      }
+    }
+  } catch(e) { console.log('Tab discovery via HTML failed:', e); }
+
+  // 2. If we found tab names, fetch each one
+  if (tabNames.length > 0) {
+    console.log('Discovered tabs:', tabNames);
+    const fetches = tabNames.map(async name => {
+      try {
+        const data = await fetchGvizData(sheetId, name);
+        if (data && data.length > 0) tabs[name] = data;
+      } catch(e) { /* tab fetch failed, skip */ }
+    });
+    await Promise.race([
+      Promise.all(fetches),
+      new Promise(resolve => setTimeout(resolve, 10000))  // 10s total timeout
+    ]);
   }
 
-  // 2. Try to discover other tabs via the HTML export endpoint (CORS-friendly)
-  try {
-    const csvUrl = 'https://docs.google.com/spreadsheets/d/' + sheetId + '/export?format=csv&gid=';
-    // Try gids 1-9 (common for multi-tab sheets; gid 0 is the default)
-    const probeGids = [
-      { gid: '0', name: null }, // skip, already fetched as default
-    ];
-    // Use the gviz endpoint with gid parameter to probe tabs
-    const probeNames = ['Sheet2','Sheet3','Sheet4','Sheet5','Summary','Data','Overview','Dashboard','Details','Log'];
+  // 3. Fallback: if no tabs discovered, fetch default + probe common names
+  if (Object.keys(tabs).length === 0) {
+    const defaultData = await fetchGvizData(sheetId);
+    if (defaultData && defaultData.length > 0) tabs['Sheet1'] = defaultData;
+
+    const probeNames = ['Sheet2','Sheet3','Sheet4','Sheet5','Summary','Data','Overview',
+                        'Dashboard','Details','Log','Budget','Schedule','Tasks','Timeline',
+                        'Financials','KPIs','People','Food','Updates','To-Do List',
+                        'Overall Plan','FOOD','Actual Spending'];
     const probes = probeNames.map(async name => {
       try {
         const data = await fetchGvizData(sheetId, name);
-        if (data && data.length > 0 && !isDuplicateTab(tabs, data)) {
-          tabs[name] = data;
-        }
-      } catch(e) { /* tab doesn't exist, skip */ }
+        if (data && data.length > 0 && !isDuplicateTab(tabs, data)) tabs[name] = data;
+      } catch(e) {}
     });
-    // Run probes concurrently but with a timeout
     await Promise.race([
       Promise.all(probes),
       new Promise(resolve => setTimeout(resolve, 5000))
     ]);
-  } catch(e) { /* probing failed, just use default tab */ }
+  }
 
   return tabs;
 }
