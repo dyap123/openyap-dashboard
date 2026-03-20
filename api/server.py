@@ -43,14 +43,10 @@ app.add_middleware(
 
 
 def get_minimax_client():
-    """Get MiniMax API key from keyring (same as const-agent)."""
+    """Get MiniMax API key from const-agent keychain."""
     try:
-        import keyring
-        api_key = keyring.get_password("minimax", "api_key")
-        if not api_key:
-            # Try alternate keyring entry
-            api_key = keyring.get_password("const-agent", "minimax_api_key")
-        return api_key
+        from auth.keychain import get_secret
+        return get_secret("api_key/minimax")
     except Exception as e:
         logger.error(f"Failed to get MiniMax key: {e}")
         return None

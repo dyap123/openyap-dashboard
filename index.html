@@ -246,6 +246,35 @@ input:focus { border-color: var(--accent); }
   border-radius: 10px; padding: 8px 14px;
   font-size: 13px; color: var(--text-secondary);
 }
+.status-breakdown {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 20px 24px; margin-bottom: 16px;
+}
+.status-breakdown-title {
+  font-size: 12px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 1px; color: var(--text-dim); margin-bottom: 12px;
+}
+.status-bar-track {
+  display: flex; height: 12px; border-radius: 6px; overflow: hidden;
+  background: rgba(128,128,128,0.1); margin-bottom: 10px;
+}
+.status-bar-seg {
+  height: 100%; transition: width 0.8s ease;
+}
+.status-bar-seg:first-child { border-radius: 6px 0 0 6px; }
+.status-bar-seg:last-child { border-radius: 0 6px 6px 0; }
+.status-bar-seg:only-child { border-radius: 6px; }
+.status-legend {
+  display: flex; gap: 16px; flex-wrap: wrap;
+}
+.status-legend-item {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 12px; color: var(--text-secondary);
+}
+.status-legend-item b { color: var(--text-primary); margin-left: 2px; }
+.status-legend-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
 .kpi-card {
   background: var(--card); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 22px 24px;
@@ -982,6 +1011,12 @@ function buildDashboard(container, config, allTabs, tabNames, aiLayout) {
     html += '</div>';
   }
 
+  // Status breakdown (auto-detect status-like columns and show visual breakdown)
+  html += buildStatusBreakdown(firstData);
+
+  // Chart (above table)
+  html += '<div id="chartSection">' + buildChart(firstData, aiLayout) + '</div>';
+
   // Search
   html += '<div class="search-bar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="text" id="searchInput" placeholder="Search..." oninput="filterTable()"></div>';
 
@@ -990,15 +1025,13 @@ function buildDashboard(container, config, allTabs, tabNames, aiLayout) {
   html += buildTable(firstData);
   html += '</table></div></div>';
 
-  // Chart
-  html += '<div id="chartSection">' + buildChart(firstData) + '</div>';
-
   // Footer
   html += '<div class="dash-footer">';
   if (config.showBadge !== false) {
     html += '<div class="badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> Powered by OpenYap</div><br>';
   }
   html += '<span>Last updated: ' + new Date().toLocaleString() + '</span>';
+  html += '<br><a href="#admin" style="color:var(--text-dim);font-size:11px;text-decoration:none;margin-top:8px;display:inline-block" onclick="location.hash=\'admin\';location.reload()">Admin</a>';
   html += '</div>';
 
   container.innerHTML = html;
@@ -1199,6 +1232,72 @@ function statusPill(val) {
   else if (/overdue|rejected|blocked|cancelled|canceled|no/.test(v)) cls = 'status-red';
   else if (/open|draft|not started/.test(v)) cls = 'status-blue';
   return '<span class="status-pill ' + cls + '">' + esc(val) + '</span>';
+}
+
+// =============================================
+// STATUS BREAKDOWN — visual progress bars for status columns
+// =============================================
+function buildStatusBreakdown(data) {
+  if (!data || data.length === 0) return '';
+  const headers = Object.keys(data[0]);
+  let html = '';
+
+  headers.forEach(h => {
+    const vals = data.map(r => String(r[h] || '').trim().toLowerCase()).filter(v => v);
+    if (vals.length === 0) return;
+    const unique = [...new Set(vals)];
+    // Status-like: 2-6 unique values, less than half of total rows
+    if (unique.length < 2 || unique.length > 6 || unique.length > vals.length * 0.5) return;
+    // Must contain at least one status-like word
+    const statusWords = /done|complete|open|pending|progress|approved|submitted|active|overdue|rejected|blocked|draft|review|hold|started|cancelled|closed|yes|no/;
+    if (!unique.some(v => statusWords.test(v))) return;
+
+    const counts = {};
+    unique.forEach(u => counts[u] = vals.filter(v => v === u).length);
+    const total = vals.length;
+
+    html += '<div class="status-breakdown">';
+    html += '<div class="status-breakdown-title">' + esc(h) + '</div>';
+    html += '<div class="status-bar-track">';
+    // Sort: done/complete first, then others, then overdue/rejected last
+    const sorted = unique.sort((a, b) => {
+      const order = v => {
+        if (/done|complete|approved|yes|closed/.test(v)) return 0;
+        if (/active|progress|started/.test(v)) return 1;
+        if (/pending|review|submitted|hold|draft/.test(v)) return 2;
+        if (/open|not started/.test(v)) return 3;
+        if (/overdue|rejected|blocked|cancelled|no/.test(v)) return 4;
+        return 2;
+      };
+      return order(a) - order(b);
+    });
+    sorted.forEach(s => {
+      const pct = (counts[s] / total * 100).toFixed(1);
+      let color = 'var(--text-dim)';
+      if (/done|complete|approved|yes|closed/.test(s)) color = '#34D399';
+      else if (/active|progress|started/.test(s)) color = 'var(--accent)';
+      else if (/pending|review|submitted|hold|draft/.test(s)) color = '#F59E0B';
+      else if (/open|not started/.test(s)) color = '#8B95A5';
+      else if (/overdue|rejected|blocked|cancelled|no/.test(s)) color = '#EF4444';
+      if (parseFloat(pct) > 0) {
+        html += '<div class="status-bar-seg" style="width:' + pct + '%;background:' + color + '" title="' + esc(s) + ': ' + counts[s] + ' (' + pct + '%)"></div>';
+      }
+    });
+    html += '</div>';
+    html += '<div class="status-legend">';
+    sorted.forEach(s => {
+      let color = 'var(--text-dim)';
+      if (/done|complete|approved|yes|closed/.test(s)) color = '#34D399';
+      else if (/active|progress|started/.test(s)) color = 'var(--accent)';
+      else if (/pending|review|submitted|hold|draft/.test(s)) color = '#F59E0B';
+      else if (/open|not started/.test(s)) color = '#8B95A5';
+      else if (/overdue|rejected|blocked|cancelled|no/.test(s)) color = '#EF4444';
+      html += '<div class="status-legend-item"><span class="status-legend-dot" style="background:' + color + '"></span>' + esc(s) + ' <b>' + counts[s] + '</b></div>';
+    });
+    html += '</div></div>';
+  });
+
+  return html;
 }
 
 // =============================================
