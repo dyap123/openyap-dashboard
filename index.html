@@ -1444,70 +1444,69 @@ async function fetchGvizData(sheetId, tabName) {
 }
 
 async function fetchAllSheetTabs(sheetId) {
-  // Strategy:
-  // 1. Fetch the published HTML page to discover all tab names
-  // 2. Fetch each tab's data via gviz
+  // Strategy: gviz doesn't have a tab-list API, so we:
+  // 1. Fetch gid=0 (default/first tab)
+  // 2. Probe common tab names + generic Sheet2/3/4/5
+  // 3. Also try gid-based fetching (gid=0,1,2...) for sheets with non-standard names
   const tabs = {};
 
-  // 1. Try to discover tab names from the published HTML
-  let tabNames = [];
+  // 1. Fetch default tab (gid=0)
   try {
-    const htmlUrl = 'https://docs.google.com/spreadsheets/d/' + sheetId + '/pubhtml';
-    const resp = await fetch(htmlUrl);
-    if (resp.ok) {
-      const html = await resp.text();
-      // Tab names appear in the HTML as: <li id="sheet-button-XXXXX"><a ...>TabName</a></li>
-      const tabRegex = /<li[^>]*id="sheet-button-[^"]*"[^>]*>.*?<a[^>]*>([^<]+)<\/a>/gi;
-      let match;
-      while ((match = tabRegex.exec(html)) !== null) {
-        const name = match[1].trim();
-        if (name && !tabNames.includes(name)) tabNames.push(name);
-      }
-      // Fallback: try another pattern used in some published sheets
-      if (tabNames.length === 0) {
-        const altRegex = /data-name="([^"]+)"/gi;
-        while ((match = altRegex.exec(html)) !== null) {
-          const name = match[1].trim();
-          if (name && !tabNames.includes(name)) tabNames.push(name);
-        }
-      }
-    }
-  } catch(e) { console.log('Tab discovery via HTML failed:', e); }
-
-  // 2. If we found tab names, fetch each one
-  if (tabNames.length > 0) {
-    console.log('Discovered tabs:', tabNames);
-    const fetches = tabNames.map(async name => {
-      try {
-        const data = await fetchGvizData(sheetId, name);
-        if (data && data.length > 0) tabs[name] = data;
-      } catch(e) { /* tab fetch failed, skip */ }
-    });
-    await Promise.race([
-      Promise.all(fetches),
-      new Promise(resolve => setTimeout(resolve, 10000))  // 10s total timeout
-    ]);
-  }
-
-  // 3. Fallback: if no tabs discovered, fetch default + probe common names
-  if (Object.keys(tabs).length === 0) {
     const defaultData = await fetchGvizData(sheetId);
     if (defaultData && defaultData.length > 0) tabs['Sheet1'] = defaultData;
+  } catch(e) {}
 
-    const probeNames = ['Sheet2','Sheet3','Sheet4','Sheet5','Summary','Data','Overview',
-                        'Dashboard','Details','Log','Budget','Schedule','Tasks','Timeline',
-                        'Financials','KPIs','People','Food','Updates','To-Do List',
-                        'Overall Plan','FOOD','Actual Spending'];
-    const probes = probeNames.map(async name => {
+  // 2. Probe many common tab names in parallel
+  const probeNames = [
+    // Generic
+    'Sheet2','Sheet3','Sheet4','Sheet5','Sheet6','Sheet7','Sheet8','Sheet9','Sheet10',
+    // Business
+    'Summary','Data','Overview','Dashboard','Details','Log','Budget','Schedule','Tasks',
+    'Timeline','Financials','KPIs','People','Updates','Status','Tracker','Report',
+    // Construction specific
+    'To-Do List','Overall Plan','FOOD','Food','Actual Spending','People Logistics',
+    'Schedule Overview','Food Recs (First Timer)','Flight Research','Consolidated Detailed Plan',
+    'May 15','May 16','May 17 Group 1','May 17 Group 2','Budget','Retreat Compare (SLO vs Newport)',
+    'Santa Barbara Resort Options','Airbnb vs. Hotel','Agreement',
+    // OpenYap specific
+    'Task Log','Totals','Money Saved',
+  ];
+
+  // Run all probes concurrently — fast ones return quickly, 404s fail silently
+  const probes = probeNames.map(async name => {
+    try {
+      const data = await fetchGvizData(sheetId, name);
+      if (data && data.length > 0 && !isDuplicateTab(tabs, data)) tabs[name] = data;
+    } catch(e) {}
+  });
+
+  await Promise.race([
+    Promise.all(probes),
+    new Promise(resolve => setTimeout(resolve, 8000))  // 8s total timeout
+  ]);
+
+  // 3. If we only found 1 tab, also try gid-based fetching
+  if (Object.keys(tabs).length <= 1) {
+    for (let gid = 1; gid <= 10; gid++) {
       try {
-        const data = await fetchGvizData(sheetId, name);
-        if (data && data.length > 0 && !isDuplicateTab(tabs, data)) tabs[name] = data;
+        const url = 'https://docs.google.com/spreadsheets/d/' + sheetId + '/gviz/tq?tqx=out:json&gid=' + gid;
+        const resp = await fetch(url);
+        if (resp.ok) {
+          const text = await resp.text();
+          const start = text.indexOf('{');
+          const end = text.lastIndexOf('}');
+          if (start >= 0 && end > start) {
+            const json = JSON.parse(text.substring(start, end + 1));
+            if (json.table && json.table.rows && json.table.rows.length > 0) {
+              const data = gvizToRows(json);
+              if (data.length > 0 && !isDuplicateTab(tabs, data)) {
+                tabs['Tab ' + (gid + 1)] = data;
+              }
+            }
+          }
+        }
       } catch(e) {}
-    });
-    await Promise.race([
-      Promise.all(probes),
-      new Promise(resolve => setTimeout(resolve, 5000))
-    ]);
+    }
   }
 
   return tabs;
