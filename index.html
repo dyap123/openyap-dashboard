@@ -1,0 +1,1400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenYap Dashboard</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0A0D14;
+  --card: #111318;
+  --border: rgba(255,255,255,0.06);
+  --text: #F0F0F2;
+  --text-muted: #8A8F9E;
+  --text-dim: #555;
+  --accent: #3B82F6;
+  --radius: 16px;
+  --shadow: 0 2px 12px rgba(0,0,0,0.3);
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+:root.light {
+  --bg: #F8F9FA;
+  --card: #FFFFFF;
+  --border: rgba(0,0,0,0.08);
+  --text: #1A1A1A;
+  --text-muted: #6B7280;
+  --text-dim: #9CA3AF;
+  --shadow: 0 2px 12px rgba(0,0,0,0.08);
+}
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  transition: background 0.3s, color 0.3s;
+  line-height: 1.5;
+}
+
+/* ---- Scrollbar ---- */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--text-dim); border-radius: 4px; }
+
+/* ---- Shared ---- */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 22px; border: none; border-radius: 10px;
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  transition: all 0.2s; font-family: var(--font);
+}
+.btn-accent { background: var(--accent); color: #fff; }
+.btn-accent:hover { filter: brightness(1.15); transform: translateY(-1px); }
+.btn-ghost { background: var(--border); color: var(--text-muted); }
+.btn-ghost:hover { background: var(--accent); color: #fff; }
+.btn-danger { background: #EF4444; color: #fff; }
+.btn-danger:hover { filter: brightness(1.15); }
+
+input[type="text"], input[type="password"], input[type="url"] {
+  width: 100%; padding: 12px 16px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 10px; color: var(--text);
+  font-size: 14px; font-family: var(--font);
+  transition: border 0.2s;
+  outline: none;
+}
+input:focus { border-color: var(--accent); }
+
+/* ---- Spinner ---- */
+.spinner-wrap {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; min-height: 60vh; gap: 16px;
+}
+.spinner {
+  width: 40px; height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- Password Gate ---- */
+#authGate {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 100vh; padding: 20px;
+}
+.auth-box {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 40px;
+  width: 100%; max-width: 400px; text-align: center;
+  box-shadow: var(--shadow);
+}
+.auth-box h1 { font-size: 22px; margin-bottom: 6px; }
+.auth-box p { color: var(--text-muted); font-size: 14px; margin-bottom: 24px; }
+.auth-box .error-msg {
+  color: #EF4444; font-size: 13px; margin-top: 12px;
+  display: none;
+}
+.auth-box input { margin-bottom: 16px; }
+.auth-box .btn { width: 100%; justify-content: center; }
+
+/* ---- Admin Panel ---- */
+#adminPanel { display: none; max-width: 720px; margin: 0 auto; padding: 40px 20px 80px; }
+.admin-header { margin-bottom: 36px; }
+.admin-header h1 { font-size: 26px; font-weight: 700; }
+.admin-header p { color: var(--text-muted); font-size: 14px; margin-top: 4px; }
+
+.step {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 28px;
+  margin-bottom: 20px; box-shadow: var(--shadow);
+}
+.step-label {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 1px; color: var(--accent); margin-bottom: 16px;
+}
+.step h2 { font-size: 18px; font-weight: 600; margin-bottom: 16px; }
+
+.field-group { margin-bottom: 16px; }
+.field-group label {
+  display: block; font-size: 13px; font-weight: 500;
+  color: var(--text-muted); margin-bottom: 6px;
+}
+
+/* Drop zone */
+.drop-zone {
+  border: 2px dashed var(--border); border-radius: 12px;
+  padding: 28px; text-align: center; cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  color: var(--text-muted); font-size: 14px;
+  margin-top: 12px; position: relative;
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--accent); background: rgba(59,130,246,0.05);
+}
+.drop-zone input[type="file"] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer;
+}
+.drop-zone .icon { font-size: 28px; margin-bottom: 8px; display: block; }
+
+/* Preview table */
+.preview-table-wrap {
+  margin-top: 16px; overflow-x: auto; border-radius: 10px;
+  border: 1px solid var(--border); display: none;
+}
+.preview-table {
+  width: 100%; border-collapse: collapse; font-size: 13px;
+}
+.preview-table th {
+  background: var(--accent); color: #fff;
+  padding: 8px 12px; text-align: left; font-weight: 600;
+  white-space: nowrap;
+}
+.preview-table td {
+  padding: 8px 12px; border-top: 1px solid var(--border);
+  white-space: nowrap; max-width: 200px; overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Color picker */
+.color-swatches { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.swatch {
+  width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
+  border: 3px solid transparent; transition: all 0.2s;
+  position: relative;
+}
+.swatch:hover { transform: scale(1.1); }
+.swatch.active { border-color: var(--text); box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text); }
+.swatch.active::after {
+  content: ''; position: absolute; inset: 6px;
+  border: 2px solid #fff; border-radius: 50%;
+}
+.hex-input {
+  width: 100px !important; font-family: monospace; font-size: 13px;
+  padding: 8px 12px !important; margin-left: 4px;
+}
+
+/* Toggle */
+.toggle-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 0;
+}
+.toggle-row span { font-size: 14px; }
+.toggle {
+  width: 48px; height: 26px; background: var(--text-dim);
+  border-radius: 13px; cursor: pointer; position: relative;
+  transition: background 0.2s; flex-shrink: 0;
+}
+.toggle.on { background: var(--accent); }
+.toggle::after {
+  content: ''; position: absolute; top: 3px; left: 3px;
+  width: 20px; height: 20px; background: #fff;
+  border-radius: 50%; transition: transform 0.2s;
+}
+.toggle.on::after { transform: translateX(22px); }
+
+/* Generated URL */
+.url-output {
+  margin-top: 20px; display: none;
+}
+.url-box {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 16px;
+  font-family: monospace; font-size: 12px;
+  word-break: break-all; color: var(--accent);
+  margin-bottom: 12px; max-height: 80px; overflow-y: auto;
+}
+.url-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* Toast */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+  background: var(--card); border: 1px solid var(--border);
+  padding: 12px 24px; border-radius: 10px; font-size: 14px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  transition: transform 0.3s ease; z-index: 9999;
+  pointer-events: none;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+/* ============ DASHBOARD MODE ============ */
+#dashboardView { display: none; }
+
+.dash-accent-bar { height: 4px; width: 100%; }
+
+.dash-container { max-width: 1200px; margin: 0 auto; padding: 32px 24px 60px; }
+
+.dash-header { margin-bottom: 32px; }
+.dash-title { font-size: 30px; font-weight: 800; letter-spacing: -0.5px; }
+.dash-subtitle { font-size: 16px; color: var(--text-muted); margin-top: 4px; }
+
+/* KPI cards */
+.kpi-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px; margin-bottom: 28px;
+}
+.kpi-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 22px 24px;
+  box-shadow: var(--shadow); transition: transform 0.2s;
+}
+.kpi-card:hover { transform: translateY(-2px); }
+.kpi-value { font-size: 28px; font-weight: 800; color: var(--accent); }
+.kpi-label { font-size: 13px; color: var(--text-muted); margin-top: 4px; font-weight: 500; }
+
+/* Tab bar */
+.tab-bar {
+  display: flex; gap: 8px; margin-bottom: 24px;
+  overflow-x: auto; padding-bottom: 4px;
+}
+.tab-pill {
+  padding: 8px 18px; border-radius: 20px; font-size: 13px;
+  font-weight: 600; cursor: pointer; white-space: nowrap;
+  border: 1px solid var(--border); background: var(--card);
+  color: var(--text-muted); transition: all 0.2s;
+}
+.tab-pill:hover { border-color: var(--accent); color: var(--text); }
+.tab-pill.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* Search */
+.search-bar {
+  margin-bottom: 16px; position: relative;
+}
+.search-bar input {
+  padding-left: 40px;
+}
+.search-bar svg {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  width: 16px; height: 16px; color: var(--text-dim);
+}
+
+/* Data table */
+.table-wrap {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+  box-shadow: var(--shadow); margin-bottom: 32px;
+}
+.table-scroll { overflow-x: auto; }
+.data-table {
+  width: 100%; border-collapse: collapse; font-size: 14px;
+}
+.data-table thead th {
+  padding: 14px 16px; text-align: left; font-weight: 600;
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-muted); border-bottom: 1px solid var(--border);
+  white-space: nowrap; cursor: pointer; user-select: none;
+  position: sticky; top: 0; background: var(--card);
+  transition: color 0.2s;
+}
+.data-table thead th:hover { color: var(--accent); }
+.data-table thead th .sort-arrow {
+  display: inline-block; margin-left: 4px; font-size: 10px;
+  opacity: 0.4; transition: opacity 0.2s;
+}
+.data-table thead th.sorted .sort-arrow { opacity: 1; color: var(--accent); }
+.data-table tbody tr { transition: background 0.15s; }
+.data-table tbody tr:nth-child(even) { background: rgba(128,128,128,0.03); }
+.data-table tbody tr:hover { background: rgba(128,128,128,0.08); }
+.data-table td {
+  padding: 12px 16px; border-top: 1px solid var(--border);
+  white-space: nowrap; max-width: 320px; overflow: hidden;
+  text-overflow: ellipsis;
+}
+.data-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.data-table td a { color: var(--accent); text-decoration: none; }
+.data-table td a:hover { text-decoration: underline; }
+
+/* Status pills */
+.status-pill {
+  display: inline-block; padding: 3px 10px; border-radius: 20px;
+  font-size: 12px; font-weight: 600; text-transform: capitalize;
+}
+.status-green { background: rgba(52,211,153,0.15); color: #34D399; }
+.status-amber { background: rgba(251,191,36,0.15); color: #FBBF24; }
+.status-red { background: rgba(239,68,68,0.15); color: #EF4444; }
+.status-blue { background: rgba(59,130,246,0.15); color: #3B82F6; }
+.status-gray { background: rgba(156,163,175,0.15); color: #9CA3AF; }
+
+/* Chart */
+.chart-section {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 24px;
+  box-shadow: var(--shadow); margin-bottom: 32px;
+}
+.chart-title { font-size: 16px; font-weight: 600; margin-bottom: 20px; }
+.bar-chart { display: flex; align-items: flex-end; gap: 8px; height: 200px; padding-top: 20px; }
+.bar-col { display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 32px; height: 100%; justify-content: flex-end; }
+.bar-val { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+.bar-rect {
+  width: 100%; max-width: 48px; border-radius: 6px 6px 0 0;
+  background: var(--accent); transition: height 0.6s ease;
+  min-height: 2px; opacity: 0.85;
+}
+.bar-rect:hover { opacity: 1; }
+.bar-label {
+  font-size: 10px; color: var(--text-dim); margin-top: 6px;
+  text-align: center; max-width: 60px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Footer */
+.dash-footer {
+  text-align: center; padding: 24px 0; color: var(--text-dim);
+  font-size: 12px; border-top: 1px solid var(--border);
+}
+.dash-footer .badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--card); border: 1px solid var(--border);
+  padding: 6px 14px; border-radius: 20px; font-weight: 600;
+  color: var(--text-muted); margin-bottom: 8px;
+}
+
+/* Error */
+.error-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 40px; text-align: center;
+  max-width: 500px; margin: 80px auto;
+}
+.error-card h2 { margin-bottom: 8px; }
+.error-card p { color: var(--text-muted); font-size: 14px; }
+
+/* Mobile */
+@media (max-width: 640px) {
+  .dash-container { padding: 20px 14px 40px; }
+  .dash-title { font-size: 22px; }
+  .kpi-row { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .kpi-value { font-size: 22px; }
+  .kpi-card { padding: 16px; }
+  #adminPanel { padding: 24px 14px 60px; }
+  .step { padding: 20px; }
+  .bar-chart { height: 150px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============ AUTH GATE ============ -->
+<div id="authGate" style="display:none">
+  <div class="auth-box">
+    <h1>Dashboard Admin</h1>
+    <p>Enter the admin password to continue</p>
+    <input type="password" id="authPassword" placeholder="Password" autocomplete="off">
+    <button class="btn btn-accent" onclick="checkPassword()">Unlock</button>
+    <div class="error-msg" id="authError">Access Denied</div>
+  </div>
+</div>
+
+<!-- ============ ADMIN PANEL ============ -->
+<div id="adminPanel">
+  <div class="admin-header">
+    <h1>Dashboard Generator</h1>
+    <p>Turn any Google Sheet or CSV into a client-facing dashboard
+      <span style="float:right;font-size:12px;color:var(--text-dim)">Tip: use <code style="background:var(--border);padding:2px 6px;border-radius:4px">#admin</code> in URL to return here</span>
+    </p>
+  </div>
+
+  <!-- Step 1: Data Source -->
+  <div class="step">
+    <div class="step-label">Step 1</div>
+    <h2>Data Source</h2>
+    <div class="field-group">
+      <label>Paste Google Sheet URL</label>
+      <input type="url" id="sheetUrl" placeholder="https://docs.google.com/spreadsheets/d/..." oninput="parseSheetUrl()">
+      <div id="sheetIdDisplay" style="font-size:12px;color:var(--text-dim);margin-top:6px;display:none"></div>
+    </div>
+    <div style="text-align:center;color:var(--text-dim);font-size:13px;margin:12px 0">or</div>
+    <div class="drop-zone" id="dropZone">
+      <span class="icon">&#128196;</span>
+      Upload CSV file<br><span style="font-size:12px;color:var(--text-dim)">Drag & drop or click to browse</span>
+      <input type="file" id="csvFile" accept=".csv,.tsv,.txt" onchange="handleFileUpload(event)">
+    </div>
+    <div class="preview-table-wrap" id="previewWrap">
+      <table class="preview-table" id="previewTable"></table>
+    </div>
+    <div id="dataStatus" style="font-size:13px;margin-top:10px;color:var(--text-muted);display:none"></div>
+  </div>
+
+  <!-- Step 2: Appearance -->
+  <div class="step">
+    <div class="step-label">Step 2</div>
+    <h2>Appearance</h2>
+
+    <div class="field-group">
+      <div class="toggle-row">
+        <span>Dark Mode</span>
+        <div class="toggle on" id="toggleTheme" onclick="toggleTheme()"></div>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <label>Accent Color</label>
+      <div class="color-swatches">
+        <div class="swatch active" style="background:#3B82F6" data-color="#3B82F6" onclick="pickColor(this)"></div>
+        <div class="swatch" style="background:#34D399" data-color="#34D399" onclick="pickColor(this)"></div>
+        <div class="swatch" style="background:#A78BFA" data-color="#A78BFA" onclick="pickColor(this)"></div>
+        <div class="swatch" style="background:#F97316" data-color="#F97316" onclick="pickColor(this)"></div>
+        <div class="swatch" style="background:#EF4444" data-color="#EF4444" onclick="pickColor(this)"></div>
+        <div class="swatch" style="background:#14B8A6" data-color="#14B8A6" onclick="pickColor(this)"></div>
+        <input type="text" class="hex-input" id="hexInput" value="#3B82F6" maxlength="7" oninput="customColor(this)">
+      </div>
+    </div>
+
+    <div class="field-group">
+      <label>Dashboard Title</label>
+      <input type="text" id="dashTitle" placeholder="e.g. LACC Project Overview">
+    </div>
+    <div class="field-group">
+      <label>Subtitle (optional)</label>
+      <input type="text" id="dashSubtitle" placeholder="e.g. Weekly Progress Report">
+    </div>
+
+    <div class="field-group">
+      <div class="toggle-row">
+        <span>Show "Powered by OpenYap" badge</span>
+        <div class="toggle on" id="toggleBadge" onclick="toggleBadge()"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3: Generate -->
+  <div class="step">
+    <div class="step-label">Step 3</div>
+    <h2>Generate & Share</h2>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-accent" onclick="generateDashboard()">Generate Dashboard</button>
+      <button class="btn btn-danger" onclick="clearDashboard()" id="clearBtn" style="display:none">Clear Dashboard</button>
+    </div>
+    <div class="url-output" id="urlOutput">
+      <div class="url-box" id="urlBox"></div>
+      <div class="url-actions">
+        <button class="btn btn-accent" onclick="copyUrl()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          Copy Link
+        </button>
+        <button class="btn btn-ghost" onclick="previewDashboard()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          Preview
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DASHBOARD VIEW ============ -->
+<div id="dashboardView">
+  <div class="dash-accent-bar" id="accentBar"></div>
+  <div class="dash-container" id="dashContainer"></div>
+</div>
+
+<!-- ============ TOAST ============ -->
+<div class="toast" id="toast"></div>
+
+<script>
+// =============================================
+// CONSTANTS & STATE
+// =============================================
+const PASSWORD_HASH = '25758a8159cea7251e177c5bc666d650966623045237f295922d8d1a3eebbb1a';
+const LS_KEY = 'openyap_dash_config';
+const LS_AUTH = 'openyap_dash_auth';
+
+let adminState = {
+  sheetId: '',
+  csvData: null,
+  csvFilename: '',
+  parsedPreview: null,
+  theme: 'dark',
+  color: '#3B82F6',
+  title: '',
+  subtitle: '',
+  showBadge: true,
+  generatedUrl: ''
+};
+
+// =============================================
+// BOOT
+// =============================================
+async function boot() {
+  const hash = window.location.hash;
+
+  // Dashboard mode: has config in hash
+  if (hash.startsWith('#config=')) {
+    await renderDashboardMode(hash.substring(8));
+    return;
+  }
+
+  // Check for saved config and auto-redirect
+  // Use #admin to force admin mode even with saved config
+  if (hash === '#admin') {
+    showAdminMode();
+    return;
+  }
+  const saved = localStorage.getItem(LS_KEY);
+  if (saved && !hash) {
+    try {
+      const cfg = JSON.parse(saved);
+      if (cfg.generatedUrl) {
+        const configPart = cfg.generatedUrl.split('#config=')[1];
+        if (configPart) {
+          window.location.hash = 'config=' + configPart;
+          await renderDashboardMode(configPart);
+          return;
+        }
+      }
+    } catch(e) {}
+  }
+
+  // Admin mode
+  showAdminMode();
+}
+
+function showAdminMode() {
+  // Check if already authenticated in this session
+  if (sessionStorage.getItem(LS_AUTH) === 'yes') {
+    showAdminPanel();
+  } else {
+    document.getElementById('authGate').style.display = 'flex';
+  }
+}
+
+// =============================================
+// PASSWORD AUTH
+// =============================================
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256',
+    new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf))
+    .map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function checkPassword() {
+  const pw = document.getElementById('authPassword').value;
+  const hash = await sha256(pw);
+  if (hash === PASSWORD_HASH) {
+    sessionStorage.setItem(LS_AUTH, 'yes');
+    document.getElementById('authGate').style.display = 'none';
+    showAdminPanel();
+  } else {
+    const err = document.getElementById('authError');
+    err.style.display = 'block';
+    document.getElementById('authPassword').value = '';
+    setTimeout(() => err.style.display = 'none', 2500);
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.getElementById('authGate').style.display === 'flex') {
+    checkPassword();
+  }
+});
+
+// =============================================
+// ADMIN PANEL
+// =============================================
+function showAdminPanel() {
+  document.getElementById('adminPanel').style.display = 'block';
+  loadSavedConfig();
+}
+
+function loadSavedConfig() {
+  const saved = localStorage.getItem(LS_KEY);
+  if (!saved) return;
+  try {
+    const cfg = JSON.parse(saved);
+    adminState = { ...adminState, ...cfg };
+    document.getElementById('dashTitle').value = cfg.title || '';
+    document.getElementById('dashSubtitle').value = cfg.subtitle || '';
+    if (cfg.sheetId) {
+      document.getElementById('sheetUrl').value =
+        'https://docs.google.com/spreadsheets/d/' + cfg.sheetId;
+      parseSheetUrl();
+    }
+    if (cfg.theme === 'light') {
+      document.documentElement.classList.add('light');
+      document.getElementById('toggleTheme').classList.remove('on');
+      adminState.theme = 'light';
+    }
+    if (cfg.color) {
+      adminState.color = cfg.color;
+      document.documentElement.style.setProperty('--accent', cfg.color);
+      document.getElementById('hexInput').value = cfg.color;
+      document.querySelectorAll('.swatch').forEach(s => {
+        s.classList.toggle('active', s.dataset.color === cfg.color);
+      });
+    }
+    if (cfg.showBadge === false) {
+      adminState.showBadge = false;
+      document.getElementById('toggleBadge').classList.remove('on');
+    }
+    if (cfg.generatedUrl) {
+      adminState.generatedUrl = cfg.generatedUrl;
+      document.getElementById('urlBox').textContent = cfg.generatedUrl;
+      document.getElementById('urlOutput').style.display = 'block';
+      document.getElementById('clearBtn').style.display = '';
+    }
+  } catch(e) { console.error('Failed to load saved config', e); }
+}
+
+// =============================================
+// STEP 1: DATA SOURCE
+// =============================================
+function parseSheetUrl() {
+  const url = document.getElementById('sheetUrl').value.trim();
+  const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  const display = document.getElementById('sheetIdDisplay');
+  if (match) {
+    adminState.sheetId = match[1];
+    adminState.csvData = null;
+    display.textContent = 'Sheet ID: ' + match[1];
+    display.style.display = 'block';
+    display.style.color = 'var(--accent)';
+    fetchSheetPreview(match[1]);
+  } else {
+    adminState.sheetId = '';
+    display.style.display = url ? 'block' : 'none';
+    display.textContent = url ? 'Could not parse sheet ID' : '';
+    display.style.color = '#EF4444';
+  }
+}
+
+async function fetchSheetPreview(sheetId) {
+  const status = document.getElementById('dataStatus');
+  status.style.display = 'block';
+  status.textContent = 'Fetching sheet data...';
+  try {
+    const data = await fetchGvizData(sheetId);
+    if (data && data.length > 0) {
+      showPreview(data);
+      status.textContent = data.length + ' rows loaded from Google Sheet';
+      status.style.color = 'var(--accent)';
+    } else {
+      status.textContent = 'No data found. Make sure the sheet is publicly accessible.';
+      status.style.color = '#EF4444';
+    }
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message + '. Make sure the sheet is public.';
+    status.style.color = '#EF4444';
+  }
+}
+
+function handleFileUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  adminState.csvFilename = file.name;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const text = e.target.result;
+    const parsed = parseCSV(text);
+    if (parsed.length > 1) {
+      adminState.csvData = text;
+      adminState.sheetId = '';
+      document.getElementById('sheetUrl').value = '';
+      document.getElementById('sheetIdDisplay').style.display = 'none';
+      showPreview(csvToRowObjects(parsed));
+      const status = document.getElementById('dataStatus');
+      status.style.display = 'block';
+      status.textContent = (parsed.length - 1) + ' rows loaded from ' + file.name;
+      status.style.color = 'var(--accent)';
+    }
+  };
+  reader.readAsText(file);
+}
+
+// Drag and drop
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag-over');
+  if (e.dataTransfer.files.length) {
+    document.getElementById('csvFile').files = e.dataTransfer.files;
+    handleFileUpload({ target: { files: e.dataTransfer.files } });
+  }
+});
+
+function showPreview(data) {
+  const wrap = document.getElementById('previewWrap');
+  const table = document.getElementById('previewTable');
+  if (!data || data.length === 0) { wrap.style.display = 'none'; return; }
+
+  const headers = Object.keys(data[0]);
+  const rows = data.slice(0, 5);
+
+  let html = '<thead><tr>';
+  headers.forEach(h => html += '<th>' + esc(h) + '</th>');
+  html += '</tr></thead><tbody>';
+  rows.forEach(row => {
+    html += '<tr>';
+    headers.forEach(h => html += '<td>' + esc(String(row[h] ?? '')) + '</td>');
+    html += '</tr>';
+  });
+  html += '</tbody>';
+  table.innerHTML = html;
+  wrap.style.display = 'block';
+}
+
+// =============================================
+// STEP 2: APPEARANCE
+// =============================================
+function toggleTheme() {
+  const el = document.getElementById('toggleTheme');
+  el.classList.toggle('on');
+  const isDark = el.classList.contains('on');
+  adminState.theme = isDark ? 'dark' : 'light';
+  document.documentElement.classList.toggle('light', !isDark);
+}
+
+function pickColor(el) {
+  document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+  el.classList.add('active');
+  adminState.color = el.dataset.color;
+  document.documentElement.style.setProperty('--accent', adminState.color);
+  document.getElementById('hexInput').value = adminState.color;
+}
+
+function customColor(input) {
+  let v = input.value.trim();
+  if (!v.startsWith('#')) v = '#' + v;
+  if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+    adminState.color = v;
+    document.documentElement.style.setProperty('--accent', v);
+    document.querySelectorAll('.swatch').forEach(s => {
+      s.classList.toggle('active', s.dataset.color.toLowerCase() === v.toLowerCase());
+    });
+  }
+}
+
+function toggleBadge() {
+  const el = document.getElementById('toggleBadge');
+  el.classList.toggle('on');
+  adminState.showBadge = el.classList.contains('on');
+}
+
+// =============================================
+// STEP 3: GENERATE
+// =============================================
+function generateDashboard() {
+  if (!adminState.sheetId && !adminState.csvData) {
+    toast('Please provide a Google Sheet URL or upload a CSV file');
+    return;
+  }
+
+  const title = document.getElementById('dashTitle').value.trim();
+  const subtitle = document.getElementById('dashSubtitle').value.trim();
+
+  const config = {
+    title: title || 'Dashboard',
+    subtitle: subtitle,
+    theme: adminState.theme,
+    color: adminState.color,
+    showBadge: adminState.showBadge
+  };
+
+  if (adminState.sheetId) {
+    config.sheetId = adminState.sheetId;
+  } else if (adminState.csvData) {
+    config.csvData = btoa(unescape(encodeURIComponent(adminState.csvData)));
+  }
+
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(config))));
+  const baseUrl = window.location.origin + window.location.pathname;
+  const fullUrl = baseUrl + '#config=' + encoded;
+
+  adminState.generatedUrl = fullUrl;
+  adminState.title = config.title;
+  adminState.subtitle = config.subtitle;
+
+  // Save to localStorage
+  localStorage.setItem(LS_KEY, JSON.stringify({
+    sheetId: adminState.sheetId,
+    title: adminState.title,
+    subtitle: adminState.subtitle,
+    theme: adminState.theme,
+    color: adminState.color,
+    showBadge: adminState.showBadge,
+    generatedUrl: fullUrl,
+    csvData: adminState.csvData ? config.csvData : null
+  }));
+
+  document.getElementById('urlBox').textContent = fullUrl;
+  document.getElementById('urlOutput').style.display = 'block';
+  document.getElementById('clearBtn').style.display = '';
+  toast('Dashboard generated!');
+}
+
+function copyUrl() {
+  navigator.clipboard.writeText(adminState.generatedUrl).then(() => {
+    toast('Link copied to clipboard');
+  });
+}
+
+function previewDashboard() {
+  window.open(adminState.generatedUrl, '_blank');
+}
+
+function clearDashboard() {
+  localStorage.removeItem(LS_KEY);
+  adminState.generatedUrl = '';
+  document.getElementById('urlOutput').style.display = 'none';
+  document.getElementById('clearBtn').style.display = 'none';
+  // Clear the hash so we don't auto-redirect
+  if (window.location.hash) history.replaceState(null, '', window.location.pathname);
+  toast('Dashboard cleared');
+}
+
+// =============================================
+// DASHBOARD RENDERING
+// =============================================
+async function renderDashboardMode(b64Config) {
+  document.getElementById('dashboardView').style.display = 'block';
+  const container = document.getElementById('dashContainer');
+
+  // Show loading
+  container.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div><div style="color:var(--text-muted);font-size:14px">Loading dashboard...</div></div>';
+
+  let config;
+  try {
+    config = JSON.parse(decodeURIComponent(escape(atob(b64Config))));
+  } catch(e) {
+    container.innerHTML = '<div class="error-card"><h2>Invalid Dashboard Link</h2><p>The configuration could not be decoded. Please request a new link.</p></div>';
+    return;
+  }
+
+  // Apply theme
+  if (config.theme === 'light') document.documentElement.classList.add('light');
+  if (config.color) document.documentElement.style.setProperty('--accent', config.color);
+  document.getElementById('accentBar').style.background = config.color || 'var(--accent)';
+  document.title = config.title || 'Dashboard';
+
+  let allTabs = {};
+
+  try {
+    if (config.csvData) {
+      // Parse embedded CSV
+      const csvText = decodeURIComponent(escape(atob(config.csvData)));
+      const parsed = parseCSV(csvText);
+      allTabs['Data'] = csvToRowObjects(parsed);
+    } else if (config.sheetId) {
+      // Fetch from Google Sheets — try to get all tabs
+      allTabs = await fetchAllSheetTabs(config.sheetId);
+    }
+  } catch(e) {
+    container.innerHTML = '<div class="error-card"><h2>Failed to Load Data</h2><p>' + esc(e.message) + '</p><p style="margin-top:12px;font-size:13px;color:var(--text-dim)">Make sure the Google Sheet is publicly accessible (Share > Anyone with the link).</p></div>';
+    return;
+  }
+
+  const tabNames = Object.keys(allTabs);
+  if (tabNames.length === 0 || (tabNames.length === 1 && allTabs[tabNames[0]].length === 0)) {
+    container.innerHTML = '<div class="error-card"><h2>No Data Found</h2><p>The data source appears to be empty. Check your Google Sheet or CSV file.</p></div>';
+    return;
+  }
+
+  buildDashboard(container, config, allTabs, tabNames);
+}
+
+function buildDashboard(container, config, allTabs, tabNames) {
+  let html = '';
+
+  // Header
+  html += '<div class="dash-header">';
+  html += '<div class="dash-title">' + esc(config.title || 'Dashboard') + '</div>';
+  if (config.subtitle) html += '<div class="dash-subtitle">' + esc(config.subtitle) + '</div>';
+  html += '</div>';
+
+  // We'll build per-tab content; initially show first tab
+  const firstTab = tabNames[0];
+  const firstData = allTabs[firstTab];
+
+  // KPIs from first tab
+  html += '<div class="kpi-row" id="kpiRow">' + buildKPIs(firstData) + '</div>';
+
+  // Tab bar
+  if (tabNames.length > 1) {
+    html += '<div class="tab-bar" id="tabBar">';
+    tabNames.forEach((name, i) => {
+      html += '<div class="tab-pill' + (i === 0 ? ' active' : '') + '" data-tab="' + esc(name) + '" onclick="switchTab(this)">' + esc(name) + '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Search
+  html += '<div class="search-bar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="text" id="searchInput" placeholder="Search..." oninput="filterTable()"></div>';
+
+  // Table
+  html += '<div class="table-wrap"><div class="table-scroll"><table class="data-table" id="dataTable">';
+  html += buildTable(firstData);
+  html += '</table></div></div>';
+
+  // Chart
+  html += '<div id="chartSection">' + buildChart(firstData) + '</div>';
+
+  // Footer
+  html += '<div class="dash-footer">';
+  if (config.showBadge !== false) {
+    html += '<div class="badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> Powered by OpenYap</div><br>';
+  }
+  html += '<span>Last updated: ' + new Date().toLocaleString() + '</span>';
+  html += '</div>';
+
+  container.innerHTML = html;
+
+  // Store data for interactivity
+  window._dashTabs = allTabs;
+  window._dashConfig = config;
+  window._currentTab = firstTab;
+  window._sortCol = -1;
+  window._sortAsc = true;
+}
+
+function switchTab(el) {
+  document.querySelectorAll('.tab-pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  const tabName = el.dataset.tab;
+  window._currentTab = tabName;
+  const data = window._dashTabs[tabName];
+
+  document.getElementById('kpiRow').innerHTML = buildKPIs(data);
+  document.getElementById('dataTable').innerHTML = buildTable(data);
+  document.getElementById('chartSection').innerHTML = buildChart(data);
+  document.getElementById('searchInput').value = '';
+  window._sortCol = -1;
+  window._sortAsc = true;
+}
+
+// =============================================
+// KPI DETECTION & RENDERING
+// =============================================
+function buildKPIs(data) {
+  if (!data || data.length === 0) return '';
+  const headers = Object.keys(data[0]);
+  const kpis = [];
+
+  headers.forEach(h => {
+    const vals = data.map(r => r[h]).filter(v => v != null && v !== '');
+    if (vals.length === 0) return;
+
+    // Check if numeric column
+    const nums = vals.map(v => parseFloat(String(v).replace(/[$,%]/g, ''))).filter(n => !isNaN(n));
+    if (nums.length >= vals.length * 0.7 && nums.length >= 3) {
+      const sum = nums.reduce((a,b) => a + b, 0);
+      const hasMoneySign = vals.some(v => String(v).includes('$'));
+      const hasPercent = vals.some(v => String(v).includes('%'));
+
+      if (hasMoneySign) {
+        kpis.push({ label: 'Total ' + h, value: '$' + formatNum(sum) });
+      } else if (hasPercent) {
+        kpis.push({ label: 'Avg ' + h, value: (sum / nums.length).toFixed(1) + '%' });
+      } else if (nums.length <= 20 && sum < 1e9) {
+        kpis.push({ label: 'Total ' + h, value: formatNum(sum) });
+      } else {
+        kpis.push({ label: h + ' (count)', value: formatNum(nums.length) });
+      }
+    } else {
+      // Status-type: count unique
+      const unique = [...new Set(vals.map(v => String(v).toLowerCase().trim()))];
+      if (unique.length <= 6 && unique.length < vals.length * 0.5) {
+        const top = unique.sort((a,b) =>
+          vals.filter(v => String(v).toLowerCase().trim() === b).length -
+          vals.filter(v => String(v).toLowerCase().trim() === a).length
+        )[0];
+        const count = vals.filter(v => String(v).toLowerCase().trim() === top).length;
+        // Skip if not useful
+      }
+    }
+  });
+
+  // Also add total rows
+  kpis.unshift({ label: 'Total Rows', value: formatNum(data.length) });
+
+  return kpis.slice(0, 5).map(k =>
+    '<div class="kpi-card"><div class="kpi-value">' + esc(String(k.value)) + '</div><div class="kpi-label">' + esc(k.label) + '</div></div>'
+  ).join('');
+}
+
+function formatNum(n) {
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+  return n % 1 === 0 ? String(n) : n.toFixed(2);
+}
+
+// =============================================
+// TABLE RENDERING
+// =============================================
+function buildTable(data) {
+  if (!data || data.length === 0) return '<tbody><tr><td>No data</td></tr></tbody>';
+  const headers = Object.keys(data[0]);
+  const colTypes = detectColumnTypes(data, headers);
+
+  let html = '<thead><tr>';
+  headers.forEach((h, i) => {
+    const arrow = window._sortCol === i ? (window._sortAsc ? ' &#9650;' : ' &#9660;') : ' &#9650;';
+    const sorted = window._sortCol === i ? ' sorted' : '';
+    html += '<th class="' + sorted + '" onclick="sortTable(' + i + ')">' + esc(h) + '<span class="sort-arrow">' + arrow + '</span></th>';
+  });
+  html += '</tr></thead><tbody>';
+
+  data.forEach(row => {
+    html += '<tr>';
+    headers.forEach((h, i) => {
+      const val = row[h] != null ? String(row[h]) : '';
+      const type = colTypes[i];
+      html += renderCell(val, type);
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody>';
+  return html;
+}
+
+function detectColumnTypes(data, headers) {
+  return headers.map((h, i) => {
+    const vals = data.slice(0, 50).map(r => String(r[h] || '').trim()).filter(v => v);
+    if (vals.length === 0) return 'text';
+
+    // URL check
+    if (vals.filter(v => /^https?:\/\//.test(v)).length > vals.length * 0.5) return 'url';
+
+    // Number check
+    const numCount = vals.filter(v => /^[$]?[\d,]+\.?\d*%?$/.test(v.replace(/\s/g, ''))).length;
+    if (numCount > vals.length * 0.6) return 'number';
+
+    // Status check
+    const statusWords = ['done','complete','completed','open','pending','closed','in progress','approved','rejected','overdue','active','inactive','yes','no','n/a','cancelled','canceled','started','not started','on hold','blocked','review','submitted','draft'];
+    const lowerVals = vals.map(v => v.toLowerCase());
+    const statusCount = lowerVals.filter(v => statusWords.some(s => v.includes(s))).length;
+    if (statusCount > vals.length * 0.4) return 'status';
+
+    // Date check
+    const dateCount = vals.filter(v => !isNaN(Date.parse(v)) && v.length > 4 && /[\/-]/.test(v)).length;
+    if (dateCount > vals.length * 0.5) return 'date';
+
+    return 'text';
+  });
+}
+
+function renderCell(val, type) {
+  if (!val) return '<td></td>';
+
+  switch(type) {
+    case 'number':
+      return '<td class="num">' + esc(val) + '</td>';
+
+    case 'url':
+      if (/^https?:\/\//.test(val)) {
+        const display = val.length > 40 ? val.substring(0, 37) + '...' : val;
+        return '<td><a href="' + esc(val) + '" target="_blank" rel="noopener">' + esc(display) + '</a></td>';
+      }
+      return '<td>' + esc(val) + '</td>';
+
+    case 'status':
+      return '<td>' + statusPill(val) + '</td>';
+
+    case 'date':
+      try {
+        const d = new Date(val);
+        if (!isNaN(d)) return '<td>' + d.toLocaleDateString() + '</td>';
+      } catch(e) {}
+      return '<td>' + esc(val) + '</td>';
+
+    default:
+      return '<td>' + esc(val) + '</td>';
+  }
+}
+
+function statusPill(val) {
+  const v = val.toLowerCase().trim();
+  let cls = 'status-gray';
+  if (/done|complete|completed|approved|yes|active/.test(v)) cls = 'status-green';
+  else if (/pending|in progress|started|review|submitted|on hold/.test(v)) cls = 'status-amber';
+  else if (/overdue|rejected|blocked|cancelled|canceled|no/.test(v)) cls = 'status-red';
+  else if (/open|draft|not started/.test(v)) cls = 'status-blue';
+  return '<span class="status-pill ' + cls + '">' + esc(val) + '</span>';
+}
+
+// =============================================
+// TABLE SORT & FILTER
+// =============================================
+function sortTable(colIdx) {
+  const data = window._dashTabs[window._currentTab];
+  const headers = Object.keys(data[0]);
+  const key = headers[colIdx];
+
+  if (window._sortCol === colIdx) {
+    window._sortAsc = !window._sortAsc;
+  } else {
+    window._sortCol = colIdx;
+    window._sortAsc = true;
+  }
+
+  data.sort((a, b) => {
+    let va = a[key] != null ? String(a[key]) : '';
+    let vb = b[key] != null ? String(b[key]) : '';
+    // Try numeric
+    const na = parseFloat(va.replace(/[$,%]/g, ''));
+    const nb = parseFloat(vb.replace(/[$,%]/g, ''));
+    if (!isNaN(na) && !isNaN(nb)) {
+      return window._sortAsc ? na - nb : nb - na;
+    }
+    // String compare
+    return window._sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+  });
+
+  document.getElementById('dataTable').innerHTML = buildTable(data);
+  filterTable(); // re-apply any active search
+}
+
+function filterTable() {
+  const q = (document.getElementById('searchInput')?.value || '').toLowerCase().trim();
+  const rows = document.querySelectorAll('#dataTable tbody tr');
+  rows.forEach(row => {
+    if (!q) { row.style.display = ''; return; }
+    const text = row.textContent.toLowerCase();
+    row.style.display = text.includes(q) ? '' : 'none';
+  });
+}
+
+// =============================================
+// CHART
+// =============================================
+function buildChart(data) {
+  if (!data || data.length === 0) return '';
+  const headers = Object.keys(data[0]);
+
+  // Find a label column and a numeric column
+  let labelCol = null, numCols = [];
+
+  headers.forEach(h => {
+    const vals = data.slice(0, 50).map(r => r[h]).filter(v => v != null && v !== '');
+    const nums = vals.map(v => parseFloat(String(v).replace(/[$,%]/g, ''))).filter(n => !isNaN(n));
+    if (nums.length > vals.length * 0.6 && vals.length > 0) {
+      numCols.push(h);
+    } else if (!labelCol && vals.length > 0) {
+      labelCol = h;
+    }
+  });
+
+  if (numCols.length === 0 || data.length < 2) return '';
+
+  // Use first numeric column for chart
+  const numCol = numCols[0];
+  if (!labelCol) labelCol = headers[0];
+
+  // Limit to 25 items for readability
+  const items = data.slice(0, 25);
+  const values = items.map(r => parseFloat(String(r[numCol] || 0).replace(/[$,%]/g, '')) || 0);
+  const maxVal = Math.max(...values, 1);
+
+  let html = '<div class="chart-section">';
+  html += '<div class="chart-title">' + esc(numCol) + ' by ' + esc(labelCol) + '</div>';
+  html += '<div class="bar-chart">';
+
+  items.forEach((row, i) => {
+    const v = values[i];
+    const pct = (v / maxVal) * 100;
+    const label = String(row[labelCol] || '').substring(0, 15);
+    html += '<div class="bar-col">';
+    html += '<div class="bar-val">' + formatNum(v) + '</div>';
+    html += '<div class="bar-rect" style="height:' + Math.max(pct, 1) + '%"></div>';
+    html += '<div class="bar-label" title="' + esc(String(row[labelCol] || '')) + '">' + esc(label) + '</div>';
+    html += '</div>';
+  });
+
+  html += '</div></div>';
+  return html;
+}
+
+// =============================================
+// DATA FETCHING: GOOGLE SHEETS GVIZ
+// =============================================
+async function fetchGvizData(sheetId, tabName) {
+  let url = 'https://docs.google.com/spreadsheets/d/' + sheetId + '/gviz/tq?tqx=out:json';
+  if (tabName) url += '&sheet=' + encodeURIComponent(tabName);
+
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error('Failed to fetch sheet (HTTP ' + resp.status + ')');
+  let text = await resp.text();
+
+  // Strip the JSONP wrapper
+  const start = text.indexOf('(');
+  const end = text.lastIndexOf(')');
+  if (start === -1 || end === -1) throw new Error('Invalid gviz response');
+  text = text.substring(start + 1, end);
+
+  const json = JSON.parse(text);
+  if (!json.table) throw new Error('No table data in response');
+
+  const cols = json.table.cols.map(c => c.label || c.id || '');
+  const rows = json.table.rows || [];
+
+  // Detect header: if first col labels are empty, use first data row
+  let headers = cols.map((c, i) => c || ('Column ' + (i + 1)));
+
+  // Check if first row looks like headers (gviz sometimes puts headers in data)
+  if (rows.length > 0) {
+    const firstRow = rows[0].c || [];
+    const firstVals = firstRow.map(c => c ? (c.v != null ? String(c.v) : '') : '');
+    const nonEmpty = firstVals.filter(v => v);
+    const shortStrings = nonEmpty.filter(v => v.length < 40 && isNaN(parseFloat(v)));
+    if (shortStrings.length >= Math.min(3, nonEmpty.length) && headers.every(h => h.startsWith('Column '))) {
+      headers = firstVals.map((v, i) => v || ('Column ' + (i + 1)));
+      rows.shift();
+    }
+  }
+
+  return rows.map(row => {
+    const obj = {};
+    const cells = row.c || [];
+    headers.forEach((h, i) => {
+      const cell = cells[i];
+      if (!cell || cell.v == null) { obj[h] = ''; return; }
+      // Use formatted value if available, else raw
+      obj[h] = cell.f || cell.v;
+    });
+    return obj;
+  });
+}
+
+async function fetchAllSheetTabs(sheetId) {
+  // gviz doesn't expose a tab-list API, and fetching /edit is blocked by CORS.
+  // Strategy: fetch the default sheet first, then probe for additional sheets
+  // by trying gid-based URLs (gid=0 is first sheet, we try a few more).
+  const tabs = {};
+
+  // 1. Fetch default tab
+  const defaultData = await fetchGvizData(sheetId);
+  const defaultName = 'Sheet1';
+  if (defaultData && defaultData.length > 0) {
+    tabs[defaultName] = defaultData;
+  }
+
+  // 2. Try to discover other tabs via the HTML export endpoint (CORS-friendly)
+  try {
+    const csvUrl = 'https://docs.google.com/spreadsheets/d/' + sheetId + '/export?format=csv&gid=';
+    // Try gids 1-9 (common for multi-tab sheets; gid 0 is the default)
+    const probeGids = [
+      { gid: '0', name: null }, // skip, already fetched as default
+    ];
+    // Use the gviz endpoint with gid parameter to probe tabs
+    const probeNames = ['Sheet2','Sheet3','Sheet4','Sheet5','Summary','Data','Overview','Dashboard','Details','Log'];
+    const probes = probeNames.map(async name => {
+      try {
+        const data = await fetchGvizData(sheetId, name);
+        if (data && data.length > 0 && !isDuplicateTab(tabs, data)) {
+          tabs[name] = data;
+        }
+      } catch(e) { /* tab doesn't exist, skip */ }
+    });
+    // Run probes concurrently but with a timeout
+    await Promise.race([
+      Promise.all(probes),
+      new Promise(resolve => setTimeout(resolve, 5000))
+    ]);
+  } catch(e) { /* probing failed, just use default tab */ }
+
+  return tabs;
+}
+
+function isDuplicateTab(existingTabs, newData) {
+  // Quick check: if new data matches an existing tab's first row, it's a duplicate
+  if (!newData || newData.length === 0) return true;
+  const newFirst = JSON.stringify(newData[0]);
+  for (const name of Object.keys(existingTabs)) {
+    if (existingTabs[name].length > 0 && JSON.stringify(existingTabs[name][0]) === newFirst) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// =============================================
+// CSV PARSER
+// =============================================
+function parseCSV(text) {
+  const rows = [];
+  let current = [];
+  let cell = '';
+  let inQuotes = false;
+  const len = text.length;
+
+  for (let i = 0; i < len; i++) {
+    const ch = text[i];
+    const next = text[i + 1];
+
+    if (inQuotes) {
+      if (ch === '"' && next === '"') {
+        cell += '"';
+        i++;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        cell += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        current.push(cell.trim());
+        cell = '';
+      } else if (ch === '\n' || (ch === '\r' && next === '\n')) {
+        current.push(cell.trim());
+        if (current.some(c => c !== '')) rows.push(current);
+        current = [];
+        cell = '';
+        if (ch === '\r') i++;
+      } else if (ch === '\r') {
+        current.push(cell.trim());
+        if (current.some(c => c !== '')) rows.push(current);
+        current = [];
+        cell = '';
+      } else {
+        cell += ch;
+      }
+    }
+  }
+
+  // Last row
+  current.push(cell.trim());
+  if (current.some(c => c !== '')) rows.push(current);
+
+  return rows;
+}
+
+function csvToRowObjects(parsed) {
+  if (parsed.length < 2) return [];
+  const headers = parsed[0];
+  return parsed.slice(1).map(row => {
+    const obj = {};
+    headers.forEach((h, i) => {
+      obj[h || ('Column ' + (i + 1))] = row[i] || '';
+    });
+    return obj;
+  });
+}
+
+// =============================================
+// UTILITIES
+// =============================================
+function esc(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// =============================================
+// INIT
+// =============================================
+boot();
+</script>
+</body>
+</html>
