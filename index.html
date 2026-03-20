@@ -843,6 +843,7 @@ dz.addEventListener('drop', e => {
 function showPreview(data) {
   const wrap = document.getElementById('previewWrap');
   const table = document.getElementById('previewTable');
+  adminState.previewData = data || [];
   if (!data || data.length === 0) { wrap.style.display = 'none'; return; }
 
   const headers = Object.keys(data[0]);
@@ -901,7 +902,7 @@ function toggleBadge() {
 // =============================================
 // STEP 3: GENERATE
 // =============================================
-function generateDashboard() {
+async function generateDashboard() {
   if (!adminState.sheetId && !adminState.csvData) {
     toast('Please provide a Google Sheet URL or upload a CSV file');
     return;
@@ -909,6 +910,8 @@ function generateDashboard() {
 
   const title = document.getElementById('dashTitle').value.trim();
   const subtitle = document.getElementById('dashSubtitle').value.trim();
+  const genBtn = document.querySelector('[onclick="generateDashboard()"]');
+  if (genBtn) { genBtn.disabled = true; genBtn.textContent = 'Analyzing data...'; }
 
   const config = {
     title: title || 'Dashboard',
@@ -923,6 +926,42 @@ function generateDashboard() {
   } else if (adminState.csvData) {
     config.csvData = btoa(unescape(encodeURIComponent(adminState.csvData)));
   }
+
+  // Try MiniMax AI analysis from admin's local network
+  if (adminState.previewData && adminState.previewData.length > 0) {
+    try {
+      const headers = Object.keys(adminState.previewData[0]);
+      const sampleRows = adminState.previewData.slice(0, 20).map(r => headers.map(h => r[h] || ''));
+      const colTypes = {};
+      headers.forEach(h => {
+        const vals = adminState.previewData.slice(0, 30).map(r => String(r[h] || '').trim()).filter(v => v);
+        const nums = vals.map(v => parseFloat(v.replace(/[$,%]/g, ''))).filter(n => !isNaN(n));
+        colTypes[h] = nums.length > vals.length * 0.6 ? 'number' : 'text';
+      });
+
+      const aiResp = await Promise.race([
+        fetch('http://127.0.0.1:8490/analyze', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            title: config.title,
+            columns: headers,
+            sample_rows: sampleRows,
+            row_count: adminState.previewData.length,
+            column_types: colTypes,
+          }),
+        }).then(r => r.ok ? r.json() : null).catch(() => null),
+        new Promise(resolve => setTimeout(() => resolve(null), 8000))
+      ]);
+
+      if (aiResp && aiResp.layout) {
+        config.aiLayout = aiResp.layout;
+        toast('AI analysis complete — layout optimized');
+      }
+    } catch(e) { console.log('AI layout not available:', e); }
+  }
+
+  if (genBtn) { genBtn.disabled = false; genBtn.textContent = 'Generate Dashboard'; }
 
   const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(config))));
   const baseUrl = window.location.origin + window.location.pathname;
@@ -947,7 +986,7 @@ function generateDashboard() {
   document.getElementById('urlBox').textContent = fullUrl;
   document.getElementById('urlOutput').style.display = 'block';
   document.getElementById('clearBtn').style.display = '';
-  toast('Dashboard generated!');
+  toast(config.aiLayout ? 'AI-enhanced dashboard generated!' : 'Dashboard generated!');
 }
 
 function copyUrl() {
@@ -1017,34 +1056,11 @@ async function renderDashboardMode(b64Config) {
     return;
   }
 
-  // Try AI layout analysis (falls back to auto-detect if unavailable)
-  let aiLayout = null;
-  try {
-    const firstData = allTabs[tabNames[0]];
-    const headers = firstData.length > 0 ? Object.keys(firstData[0]) : [];
-    const colTypes = {};
-    const types = detectColumnTypes(firstData, headers);
-    headers.forEach((h, i) => colTypes[h] = types[i]);
-
-    const aiResp = await Promise.race([
-      fetch((location.protocol === 'http:' ? 'http://100.116.75.57:8490' : 'https://100.116.75.57:8490') + '/analyze', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          title: config.title || 'Dashboard',
-          columns: headers,
-          sample_rows: firstData.slice(0, 20).map(r => headers.map(h => r[h] || '')),
-          row_count: firstData.length,
-          column_types: colTypes,
-        }),
-      }).then(r => r.ok ? r.json() : null).catch(() => null),
-      new Promise(resolve => setTimeout(() => resolve(null), 5000))  // 5s timeout
-    ]);
-    if (aiResp && aiResp.layout) {
-      aiLayout = aiResp.layout;
-      console.log('AI layout loaded:', aiLayout);
-    }
-  } catch(e) { console.log('AI layout unavailable, using auto-detect'); }
+  // Use AI layout from config (embedded during generation) or fall back to auto-detect
+  let aiLayout = config.aiLayout || null;
+  if (aiLayout) {
+    console.log('Using embedded AI layout');
+  }
 
   buildDashboard(container, config, allTabs, tabNames, aiLayout);
 }

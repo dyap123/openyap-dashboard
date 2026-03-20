@@ -76,9 +76,22 @@ async def call_minimax(prompt: str, max_tokens: int = 4096) -> str:
         resp.raise_for_status()
         data = resp.json()
         # Extract text from Anthropic-style response
+        # MiniMax returns: [{type:"thinking",...}, {type:"text", text:"..."}]
         content = data.get("content", [])
         if content and isinstance(content, list):
-            return content[0].get("text", "")
+            for block in content:
+                if block.get("type") == "text" and block.get("text"):
+                    text = block["text"]
+                    # Strip markdown code fences if present
+                    if text.startswith("```"):
+                        lines = text.split("\n")
+                        lines = [l for l in lines if not l.strip().startswith("```")]
+                        text = "\n".join(lines)
+                    return text.strip()
+            # Fallback: return first block with any text
+            for block in content:
+                if block.get("text"):
+                    return block["text"]
         return ""
 
 
